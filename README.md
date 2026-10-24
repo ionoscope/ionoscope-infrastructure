@@ -35,6 +35,13 @@ The script starts Docker Desktop if necessary and starts the existing
 restart without rebuilding images. Stop services without deleting data with
 `docker compose -f docker-compose.dev.yml -p ionoscope-api-check stop`.
 
+Development uses three shared images: `ionoscope-data:dev` for the data API,
+data worker and station discovery; `ionoscope-api:dev` for the forecast API
+and refresh worker; and `ionoscope-ml-service:dev` for inference. Only the
+three API services define builds. Rebuild after code changes with `./start.ps1`;
+use `./start.ps1 -NoBuild` for ordinary starts. Rebuilds can leave old unused
+image versions on disk even though the image names stay the same.
+
 To restart Docker Desktop and bring the stack back up together, use
 `./start.ps1 -RestartDocker -NoBuild`. In the checked Windows installation,
 `docker desktop restart` alone left all containers stopped despite their
