@@ -37,16 +37,20 @@ services:
   data-update-worker:
     image: ${IONOSCOPE_DATA_IMAGE:-ionoscope-data:latest}
     restart: unless-stopped
+    environment:
+      IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
     command:
       [
         "python",
         "scripts/run_live_worker.py",
+        "--candidate-registry",
+        "/app/live_data/discovery/station_registry.json",
         "--stations",
         "${IONOSCOPE_LIVE_STATIONS:-auto}",
         "--sources",
         "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,noaa}",
         "--interval-seconds",
-        "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-900}",
+        "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-300}",
         "--retry-seconds",
         "${IONOSCOPE_LIVE_RETRY_SECONDS:-60}",
         "--initial-hours",
@@ -68,6 +72,24 @@ services:
         condition: service_healthy
     networks:
       - backend
+      - egress
+
+  station-discovery:
+    image: ${IONOSCOPE_DATA_IMAGE:-ionoscope-data:latest}
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
+      IONOSCOPE_DATA_WORKSPACE: /app/live_data
+    command: ["python", "-u", "scripts/run_station_discovery.py", "--interval-seconds", "${IONOSCOPE_DISCOVERY_INTERVAL_SECONDS:-3600}"]
+    volumes:
+      - data_live:/app/live_data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json; from pathlib import Path; assert 'run_station_discovery.py' in Path('/proc/1/cmdline').read_text(); assert json.loads(Path('/app/live_data/discovery/status.json').read_text())['phase'] in ('running','ok','failed')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
       - egress
 
   ml-service:
@@ -121,7 +143,7 @@ services:
         "--api-url",
         "http://api:8000",
         "--interval-seconds",
-        "${IONOSCOPE_FORECAST_REFRESH_INTERVAL_SECONDS:-900}",
+        "${IONOSCOPE_FORECAST_REFRESH_INTERVAL_SECONDS:-300}",
         "--timeout",
         "${IONOSCOPE_FORECAST_REFRESH_TIMEOUT_SECONDS:-30}",
         "--run-on-start"

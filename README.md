@@ -7,6 +7,7 @@ calculation is intentionally separated from user-facing requests:
 
 - `data-api` serves station metadata and prepared feature tables.
 - `data-update-worker` processes queued prepared-data update tasks.
+- `station-discovery` checks the full catalog separately and publishes candidates.
 - `ml-service` performs fast inference from prepared features.
 - `api` serves user-facing forecast requests from cache when possible.
 - `forecast-refresh-worker` refreshes forecast cache in the background.
@@ -33,6 +34,13 @@ The script starts Docker Desktop if necessary and starts the existing
 `ionoscope-api-check` Compose project. Use `./start.ps1 -NoBuild` for a quick
 restart without rebuilding images. Stop services without deleting data with
 `docker compose -f docker-compose.dev.yml -p ionoscope-api-check stop`.
+
+To restart Docker Desktop and bring the stack back up together, use
+`./start.ps1 -RestartDocker -NoBuild`. In the checked Windows installation,
+`docker desktop restart` alone left all containers stopped despite their
+`unless-stopped` policy. The launcher explicitly starts Compose after the
+engine is ready. API health does not mean the first live forecast cycle has
+finished; check `/api/v1/live/status` for its result.
 
 Open API docs:
 
@@ -61,7 +69,7 @@ Only the gateway port is public. Internal service ports are not published.
 
 ## Background Flow
 
-Compose automatically selects current stations and updates them every 900 seconds, starting immediately when
+Compose automatically selects current stations and updates them every 300 seconds, starting immediately when
 the API is healthy. `data-update-worker` collects GIRO + GFZ + NOAA RTSW, prepares
 a new immutable feature generation, publishes its pointer atomically, then
 refreshes the main API forecast/cache. The first pull covers 24 hours; subsequent
@@ -93,21 +101,39 @@ After a restart the next cycle runs immediately from the persisted collection
 watermark. Updates share an OS lock. A collection timeout terminates the whole
 collector process group inside Linux and releases its lock.
 
-`IONOSCOPE_LIVE_STATIONS=auto` checks the current GIRO station form each cycle,
-including stations missing from the old local catalog. A station qualifies only
+`station-discovery` checks the full current GIRO catalog on a 3600-second
+schedule, including codes missing from the old local catalog. It publishes
+candidate hints incrementally in `live_data/discovery/station_registry.json`.
+The live worker checks only these candidates and previously prepared stations;
+it does not fetch the full station form in each foreground cycle. Missing or
+stale catalog hints cannot authorize serving an old forecast. On a fresh install,
+live updates retry while discovery publishes its first eligible candidates.
+A station qualifies only
 with a finite foF2 in 0.5–25 MHz, CS >= 50, measured in a completed interval and
 no more than 60 minutes old. New stations also require coordinates from the GIRO
 response. The merged metadata is persisted without modifying the source catalog.
 Only qualifying stations enter full collection; at most four GIRO requests run
 concurrently. One failed station does not prevent other forecast refreshes.
-Requests are spaced at least 6 seconds apart. HTTP 429 opens a cooldown of at
-least 60 seconds (or Retry-After); it does not trigger burst retries. Verified
-activity checks can be reused for up to 10 minutes; source errors are rechecked.
-Normal cycles are scheduled 900 seconds from their start, rather than adding
+Requests across both workers and collection subprocesses share one file-backed
+rate gate. Foreground network requests reserve priority; background requests yield between
+probes and never hold the rate lock while sleeping. Requests are spaced at least
+6 seconds apart. HTTP 429 opens a shared cooldown of at
+least 60 seconds (or Retry-After); it does not trigger burst retries.
+Queued requests wait for that cooldown and recheck it before starting, including
+when another in-flight request received 429 while they were waiting. The request
+that received 429 remains a source error; stations still in the queue are
+attempted after the pause instead of being marked unavailable without a request.
+Verified activity checks can be reused for up to 10 minutes; source errors are rechecked.
+Normal live cycles are scheduled 300 seconds from their start, rather than adding
 the collection duration to the interval.
 
-The complete station audit (including exclusion reasons) is in
-`live_data/station_registry.json`; current results are also in the live status API.
+The full station audit is in `live_data/discovery/station_registry.json`.
+The serving activity snapshot is in `live_data/station_registry.json`.
+The live status API also reports foreground duration/next run and background status.
+Network priority is released before CPU-only feature preparation, so discovery
+can make progress while features and forecasts are being calculated. The last
+completed cycle's duration is recorded as `duration_seconds`; `started_at` and
+`phase` describe the current cycle.
 The main forecast station list omits inactive entries. A direct forecast request
 for an inactive station returns 503 even if its previous cache is still present.
 An activity check expires after 30 minutes without a new scan, and observation
@@ -151,11 +177,15 @@ a ready forecast without running the full data update path.
 
 ## API verification
 
-The API checker covers all 16 business/liveness routes, documentation, error
+The API checker covers all 17 business/liveness routes, documentation, error
 schemas, cache recovery/concurrency, update-queue persistence and the real model.
 Build test images with `docker compose -f docker-compose.dev.yml -p ionoscope-api-check build data-api ml-service api`,
 then run `python scripts/check_stack.py --docker --report ../output/api_verification/full_stack_docker.json`
 from ionoscope-api. The checker uses isolated data and removes temporary containers.
+Add `--active-stations` for 69 scenarios covering production activity guards,
+inactive stations with existing cache, expired targets and source failures.
+See [the verification report](docs/verification-2026-10-24.md) for the checked
+real-data cycle, station rechecks and the Docker restart behavior.
 
 The production data-update-worker uses both the private backend network and an
 outbound egress network to collect external observations. Other internal services
