@@ -28,8 +28,11 @@ services:
       context: ../ionoscope-ml-service
     ports:
       - "8002:8002"
+    environment:
+      IONOSCOPE_SHADOW_DIR: /app/shadow_data
     volumes:
       - ../ionoscope-ml-service/production_models:/app/production_models:ro
+      - ../ionoscope-ml-service/shadow_data:/app/shadow_data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
       interval: 30s
@@ -67,7 +70,8 @@ services:
     restart: unless-stopped
     environment:
       IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
-    command: ["python", "-u", "scripts/run_live_worker.py", "--candidate-registry", "/app/live_data/discovery/station_registry.json", "--stations", "${IONOSCOPE_LIVE_STATIONS:-auto}", "--sources", "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,noaa}", "--interval-seconds", "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-300}", "--retry-seconds", "${IONOSCOPE_LIVE_RETRY_SECONDS:-60}", "--initial-hours", "${IONOSCOPE_LIVE_INITIAL_HOURS:-24}", "--overlap-hours", "${IONOSCOPE_LIVE_OVERLAP_HOURS:-3}"]
+      IONOSCOPE_INPUT_PROFILE: ${IONOSCOPE_INPUT_PROFILE:-candidate-cs50-period-end-v1}
+    command: ["python", "-u", "scripts/run_live_worker.py", "--candidate-registry", "/app/live_data/discovery/station_registry.json", "--stations", "${IONOSCOPE_LIVE_STATIONS:-auto}", "--sources", "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,omni,noaa}", "--interval-seconds", "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-300}", "--retry-seconds", "${IONOSCOPE_LIVE_RETRY_SECONDS:-60}", "--initial-hours", "${IONOSCOPE_LIVE_INITIAL_HOURS:-192}", "--overlap-hours", "${IONOSCOPE_LIVE_OVERLAP_HOURS:-3}"]
     volumes:
       - ../ionoscope-data/live_data:/app/live_data
       - ../ionoscope-data/data:/app/data
@@ -100,6 +104,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  model-shadow-worker:
+    image: ionoscope-ml-service:dev
+    restart: unless-stopped
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      IONOSCOPE_SHADOW_MODEL_PATH: /app/candidate/model.joblib
+      IONOSCOPE_SHADOW_MODEL_SHA256: 3f3008c698bee8b4b02a299cecda79441939c5db891db2b4f2c1183c24ee6350
+    command: ["python", "-u", "scripts/run_shadow_worker.py"]
+    volumes:
+      - ../ionoscope-ml-service/production_models:/app/production_models:ro
+      - ../output/working_scheme_20261024/candidate:/app/candidate:ro
+      - ../ionoscope-data/live_data:/app/live_data:ro
+      - ../ionoscope-ml-service/shadow_data:/app/shadow_data
+    depends_on:
+      ml-service:
+        condition: service_healthy
 
   forecast-refresh-worker:
     image: ionoscope-api:dev

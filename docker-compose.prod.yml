@@ -39,6 +39,7 @@ services:
     restart: unless-stopped
     environment:
       IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
+      IONOSCOPE_INPUT_PROFILE: ${IONOSCOPE_INPUT_PROFILE:-candidate-cs50-period-end-v1}
     command:
       [
         "python",
@@ -48,13 +49,13 @@ services:
         "--stations",
         "${IONOSCOPE_LIVE_STATIONS:-auto}",
         "--sources",
-        "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,noaa}",
+        "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,omni,noaa}",
         "--interval-seconds",
         "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-300}",
         "--retry-seconds",
         "${IONOSCOPE_LIVE_RETRY_SECONDS:-60}",
         "--initial-hours",
-        "${IONOSCOPE_LIVE_INITIAL_HOURS:-24}",
+        "${IONOSCOPE_LIVE_INITIAL_HOURS:-192}",
         "--overlap-hours",
         "${IONOSCOPE_LIVE_OVERLAP_HOURS:-3}"
       ]
@@ -95,8 +96,11 @@ services:
   ml-service:
     image: ${IONOSCOPE_ML_IMAGE:-ionoscope-ml-service:latest}
     restart: unless-stopped
+    environment:
+      IONOSCOPE_SHADOW_DIR: /app/shadow_data
     volumes:
       - ml_models:/app/production_models:ro
+      - ml_shadow:/app/shadow_data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
       interval: 30s
@@ -130,6 +134,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - backend
+
+  model-shadow-worker:
+    image: ${IONOSCOPE_ML_IMAGE:-ionoscope-ml-service:latest}
+    restart: unless-stopped
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      IONOSCOPE_SHADOW_MODEL_PATH: /app/candidate/model.joblib
+      IONOSCOPE_SHADOW_MODEL_SHA256: 3f3008c698bee8b4b02a299cecda79441939c5db891db2b4f2c1183c24ee6350
+    command: ["python", "-u", "scripts/run_shadow_worker.py"]
+    volumes:
+      - ml_models:/app/production_models:ro
+      - ${IONOSCOPE_SHADOW_CANDIDATE_DIR:-../output/working_scheme_20261024/candidate}:/app/candidate:ro
+      - data_live:/app/live_data:ro
+      - ml_shadow:/app/shadow_data
+    depends_on:
+      ml-service:
+        condition: service_healthy
     networks:
       - backend
 
@@ -171,3 +195,4 @@ volumes:
   data_update_tasks:
   forecast_cache:
   ml_models:
+  ml_shadow:

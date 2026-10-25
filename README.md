@@ -197,3 +197,17 @@ real-data cycle, station rechecks and the Docker restart behavior.
 The production data-update-worker uses both the private backend network and an
 outbound egress network to collect external observations. Other internal services
 remain on the backend network. The gateway also forwards /redoc.
+
+## Frozen candidate shadow run
+
+`model-shadow-worker` compares the fixed original/candidate pair using published
+live features and stores immutable predictions and subsequently received facts.
+The public API continues to use the original model. Compose collects OMNI as well
+as GIRO/GFZ/NOAA and enables the shared CS50 period-end input profile with eight
+days of initial history. In production, provision `IONOSCOPE_SHADOW_CANDIDATE_DIR`
+with the frozen `model.joblib`; the worker verifies its SHA-256 before loading.
+The journal persists in `ml_shadow` (dev: `ionoscope-ml-service/shadow_data`).
+Read `http://localhost:8002/api/v1/shadow/status` in dev; in production access the
+ML service on the backend network. No automatic promotion is implemented.
+See the sibling ML service document `docs/live-shadow-2026-10-25.md` for checks,
+scoring, limitations and rollback.
