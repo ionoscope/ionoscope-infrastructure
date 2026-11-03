@@ -24,6 +24,27 @@ calculation is intentionally separated from user-facing requests:
 
 ## Local Development
 
+### Windows automatic startup
+
+Run `./enable-autostart.ps1` once to install a per-user Startup shortcut.
+After signing in to Windows, it runs `autostart.ps1` hidden, starts Docker
+Desktop if necessary, and restores all seven implemented services with
+`start.ps1 -NoBuild`. No images are downloaded or rebuilt during startup.
+The launcher retries startup up to four times and prevents duplicate launchers.
+State and diagnostic logs are written to ignored `logs/autostart-status.json`
+and `logs/autostart-*.log`. This starts after user sign-in, not before login.
+
+To start manually, use `./start.ps1 -NoBuild`. To remove automatic startup,
+run `./enable-autostart.ps1 -Disable`; existing data and containers are retained.
+
+Collection and model comparison stop while the computer is off or asleep,
+then resume from persisted history and the SQLite comparison journal.
+Missed forecast intervals remain missing: downloading observations later
+cannot recreate prospective predictions. Daily shutdowns reduce coverage,
+so the first review date may not yet provide enough evidence for promotion.
+The automated review must account for gaps instead of treating calendar time
+as uninterrupted observation. No continuous cloud deployment is configured.
+
 From this directory:
 
 ```powershell
@@ -211,3 +232,20 @@ Read `http://localhost:8002/api/v1/shadow/status` in dev; in production access t
 ML service on the backend network. No automatic promotion is implemented.
 See the sibling ML service document `docs/live-shadow-2026-10-25.md` for checks,
 scoring, limitations and rollback.
+
+
+## Frontend contract 0.2.0
+
+Deploy the Data API and main API together: history now uses allow_partial=true.
+The production frontend service serves the static directory IONOSCOPE_FRONTEND_DIST.
+Build the frontend first and point this variable at the folder containing index.html
+(for Angular this is often dist/<project>/browser). No frontend application is generated
+by this backend change. The gateway forwards / to frontend and /api to the API.
+The frontend can be developed independently on localhost:4200 using configured CORS.
+
+/explain uses SSE with buffering and gzip disabled and a 180-second read timeout.
+The gateway limits it per IP to 6 requests/minute with a burst of 3; excess calls return
+JSON HTTP 429 rate_limited. The API sets X-Accel-Buffering: no as well.
+Configure IONOSCOPE_LLM_URL, IONOSCOPE_LLM_MODEL and optionally IONOSCOPE_LLM_API_KEY
+for a streaming chat-completions-compatible provider. Production API has egress access.
+Keep the API behind this gateway so the explanation rate limit applies.

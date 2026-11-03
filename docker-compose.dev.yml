@@ -45,6 +45,11 @@ services:
     build:
       context: ../ionoscope-api
     environment:
+      IONOSCOPE_CORS_ORIGINS: ${IONOSCOPE_CORS_ORIGINS:-http://localhost:4200}
+      IONOSCOPE_HISTORY_HOURS: ${IONOSCOPE_HISTORY_HOURS:-24}
+      IONOSCOPE_LLM_URL: ${IONOSCOPE_LLM_URL:-}
+      IONOSCOPE_LLM_MODEL: ${IONOSCOPE_LLM_MODEL:-}
+      IONOSCOPE_LLM_API_KEY: ${IONOSCOPE_LLM_API_KEY:-}
       IONOSCOPE_DATA_API_URL: http://data-api:8001
       IONOSCOPE_REQUIRE_ACTIVE_STATIONS: "true"
       IONOSCOPE_ML_SERVICE_URL: http://ml-service:8002
