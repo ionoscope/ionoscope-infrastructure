@@ -205,12 +205,12 @@ a ready forecast without running the full data update path.
 
 ## API verification
 
-The API checker covers all 17 business/liveness routes, documentation, error
+The API checker covers all 21 business/liveness routes, documentation, error
 schemas, cache recovery/concurrency, update-queue persistence and the real model.
 Build test images with `docker compose -f docker-compose.dev.yml -p ionoscope-api-check build data-api ml-service api`,
 then run `python scripts/check_stack.py --docker --report ../output/api_verification/full_stack_docker.json`
 from ionoscope-api. The checker uses isolated data and removes temporary containers.
-Add `--active-stations` for 69 scenarios covering production activity guards,
+Add `--active-stations` for 75 scenarios covering production activity guards,
 inactive stations with existing cache, expired targets and source failures.
 See [the verification report](docs/verification-2026-10-24.md) for the checked
 real-data cycle, station rechecks and the Docker restart behavior.
@@ -249,3 +249,15 @@ JSON HTTP 429 rate_limited. The API sets X-Accel-Buffering: no as well.
 Configure IONOSCOPE_LLM_URL, IONOSCOPE_LLM_MODEL and optionally IONOSCOPE_LLM_API_KEY
 for a streaming chat-completions-compatible provider. Production API has egress access.
 Keep the API behind this gateway so the explanation rate limit applies.
+
+
+## Historical forecast archive
+
+Deploy updated Data API and API together. The API persists immutable predictions in
+forecast_cache/forecasts.sqlite3 on the existing durable forecast_cache volume.
+The API also receives a read-only mount of the existing ml_shadow journal via
+IONOSCOPE_FORECAST_SHADOW_DB. Original control predictions are labelled separately;
+candidate results and missed slots are not presented as production API forecasts.
+GET /api/v1/forecast/history compares saved predictions to completed, qualified
+observations. Data API include_inactive=true allows historic comparisons without
+making an inactive station available for live forecasts.

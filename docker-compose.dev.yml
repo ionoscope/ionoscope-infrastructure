@@ -53,11 +53,13 @@ services:
       IONOSCOPE_DATA_API_URL: http://data-api:8001
       IONOSCOPE_REQUIRE_ACTIVE_STATIONS: "true"
       IONOSCOPE_ML_SERVICE_URL: http://ml-service:8002
+      IONOSCOPE_FORECAST_SHADOW_DB: /app/shadow_data/shadow.sqlite3
       IONOSCOPE_FORECAST_CACHE_DIR: /app/forecast_cache
     ports:
       - "8000:8000"
     volumes:
       - ../ionoscope-api/forecast_cache:/app/forecast_cache
+      - ../ionoscope-ml-service/shadow_data:/app/shadow_data:ro
     depends_on:
       data-api:
         condition: service_healthy
