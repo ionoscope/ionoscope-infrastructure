@@ -201,6 +201,12 @@ a ready forecast without running the full data update path.
 - Back up named volumes for raw data, prepared features, forecast cache and
   model artifacts.
 - Keep `data-api`, `ml-service` and workers private; expose only `gateway`.
+- When another reverse proxy stands in front of `gateway`, make it send
+  `X-Real-IP`. The gateway trusts that header only from private addresses and
+  uses it for the explanation rate limit.
+- Service containers run as user 10001. Volumes created by earlier root images
+  need a one-time ownership change, for example
+  `docker run --rm -v <volume>:/v alpine chown -R 10001:10001 /v`.
 
 
 ## API verification
