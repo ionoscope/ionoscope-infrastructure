@@ -1,5 +1,6 @@
 name: Publish server review bundle
 on:
+  workflow_dispatch:
   push:
     tags: [review-v1]
 permissions:
