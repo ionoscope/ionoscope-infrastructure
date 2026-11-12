@@ -1,0 +1,209 @@
+services:
+  gateway:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/gateway:review-v1
+    restart: unless-stopped
+    ports:
+      - "${IONOSCOPE_HTTP_PORT:-80}:80"
+    depends_on:
+      frontend:
+        condition: service_started
+      api:
+        condition: service_healthy
+    networks:
+      - public
+      - backend
+
+  frontend:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/frontend:review-v1
+    restart: unless-stopped
+    networks:
+      - public
+
+  data-api:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_DATA_WORKSPACE: /app/live_data
+    volumes:
+      - data_live:/app/live_data
+      - data_raw:/app/data
+      - data_cleaned:/app/cleaned
+      - data_normalized:/app/normalized
+      - data_features:/app/features
+      - data_update_tasks:/app/update_tasks
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+  data-update-worker:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
+      IONOSCOPE_INPUT_PROFILE: ${IONOSCOPE_INPUT_PROFILE:-candidate-cs50-period-end-v1}
+    command:
+      [
+        "python",
+        "scripts/run_live_worker.py",
+        "--candidate-registry",
+        "/app/live_data/discovery/station_registry.json",
+        "--stations",
+        "${IONOSCOPE_LIVE_STATIONS:-auto}",
+        "--sources",
+        "${IONOSCOPE_LIVE_SOURCES:-giro,gfz,omni,noaa}",
+        "--interval-seconds",
+        "${IONOSCOPE_LIVE_INTERVAL_SECONDS:-300}",
+        "--retry-seconds",
+        "${IONOSCOPE_LIVE_RETRY_SECONDS:-60}",
+        "--initial-hours",
+        "${IONOSCOPE_LIVE_INITIAL_HOURS:-192}",
+        "--overlap-hours",
+        "${IONOSCOPE_LIVE_OVERLAP_HOURS:-3}"
+      ]
+    volumes:
+      - data_live:/app/live_data
+      - data_raw:/app/data
+      - data_cleaned:/app/cleaned
+      - data_normalized:/app/normalized
+      - data_features:/app/features
+      - data_update_tasks:/app/update_tasks
+    depends_on:
+      data-api:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
+
+  station-discovery:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
+      IONOSCOPE_DATA_WORKSPACE: /app/live_data
+    command: ["python", "-u", "scripts/run_station_discovery.py", "--interval-seconds", "${IONOSCOPE_DISCOVERY_INTERVAL_SECONDS:-3600}"]
+    volumes:
+      - data_live:/app/live_data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json; from pathlib import Path; assert 'run_station_discovery.py' in Path('/proc/1/cmdline').read_text(); assert json.loads(Path('/app/live_data/discovery/status.json').read_text())['phase'] in ('running','ok','failed')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - egress
+
+  ml-service:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/ml:review-v1
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_SHADOW_DIR: /app/shadow_data
+    volumes:
+      - ml_shadow:/app/shadow_data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+  api:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/api:review-v1
+    restart: unless-stopped
+    environment:
+      IONOSCOPE_CORS_ORIGINS: ${IONOSCOPE_CORS_ORIGINS:-http://localhost:4200}
+      IONOSCOPE_HISTORY_HOURS: ${IONOSCOPE_HISTORY_HOURS:-24}
+      IONOSCOPE_LLM_URL: ${IONOSCOPE_LLM_URL:-}
+      IONOSCOPE_LLM_MODEL: ${IONOSCOPE_LLM_MODEL:-}
+      IONOSCOPE_LLM_API_KEY: ${IONOSCOPE_LLM_API_KEY:-}
+      IONOSCOPE_LLM_TIMEOUT_SECONDS: ${IONOSCOPE_LLM_TIMEOUT_SECONDS:-60}
+      IONOSCOPE_DATA_API_URL: http://data-api:8001
+      IONOSCOPE_REQUIRE_ACTIVE_STATIONS: "true"
+      IONOSCOPE_ML_SERVICE_URL: http://ml-service:8002
+      IONOSCOPE_FORECAST_SHADOW_DB: /app/shadow_data/shadow.sqlite3
+      IONOSCOPE_FORECAST_CACHE_DIR: /app/forecast_cache
+      IONOSCOPE_FORECAST_STALE_AFTER_MINUTES: ${IONOSCOPE_FORECAST_STALE_AFTER_MINUTES:-30}
+      IONOSCOPE_FORECAST_EXPIRE_AFTER_MINUTES: ${IONOSCOPE_FORECAST_EXPIRE_AFTER_MINUTES:-120}
+      IONOSCOPE_REQUEST_TIMEOUT_SECONDS: ${IONOSCOPE_REQUEST_TIMEOUT_SECONDS:-10}
+    volumes:
+      - forecast_cache:/app/forecast_cache
+      - ml_shadow:/app/shadow_data:ro
+    depends_on:
+      data-api:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+      - egress
+
+  model-shadow-worker:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/ml:review-v1
+    restart: unless-stopped
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      IONOSCOPE_SHADOW_MODEL_PATH: /app/candidate/model.joblib
+      IONOSCOPE_SHADOW_MODEL_SHA256: 3f3008c698bee8b4b02a299cecda79441939c5db891db2b4f2c1183c24ee6350
+    command: ["python", "-u", "scripts/run_shadow_worker.py"]
+    volumes:
+      - data_live:/app/live_data:ro
+      - ml_shadow:/app/shadow_data
+    depends_on:
+      ml-service:
+        condition: service_healthy
+    networks:
+      - backend
+
+  forecast-refresh-worker:
+    image: ghcr.io/ionoscope/ionoscope-infrastructure/api:review-v1
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "scripts/run_forecast_refresh_worker.py",
+        "--api-url",
+        "http://api:8000",
+        "--interval-seconds",
+        "${IONOSCOPE_FORECAST_REFRESH_INTERVAL_SECONDS:-300}",
+        "--timeout",
+        "${IONOSCOPE_FORECAST_REFRESH_TIMEOUT_SECONDS:-30}",
+        "--run-on-start"
+      ]
+    volumes:
+      - forecast_cache:/app/forecast_cache
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  public:
+  egress:
+  backend:
+    internal: true
+
+volumes:
+  data_live:
+  data_raw:
+  data_cleaned:
+  data_normalized:
+  data_features:
+  data_update_tasks:
+  forecast_cache:
+  ml_shadow:
