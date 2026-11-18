@@ -18,3 +18,28 @@ settings and are optional.
 
 For startup diagnostics run `docker compose ps` and
 `docker compose logs --tail=100 data-update-worker forecast-refresh-worker`.
+
+## Updating an existing installation
+
+Publishing images to GHCR does not itself update the server. Download the newly
+built bundle, load `images.tar.gz`, and run Compose from the same installation
+directory with the same project name so that existing volumes remain attached.
+Do not use `docker compose down -v`: that deletes the stored data.
+
+The data and API images now run as UID 10001. When upgrading an installation
+whose existing data was written by root, stop its services and migrate ownership
+once before starting the updated images:
+
+```sh
+docker compose stop
+docker compose run --rm --no-deps --user 0 --entrypoint sh data-api -c 'chown -R 10001:10001 /app/live_data /app/data /app/cleaned /app/normalized /app/features /app/update_tasks'
+docker compose run --rm --no-deps --user 0 --entrypoint sh api -c 'chown -R 10001:10001 /app/forecast_cache'
+docker compose up -d --pull never
+```
+
+New installations use writable volumes without this migration. Check
+`docker compose ps`, `/health` and collector logs after updating. New forecast
+responses include observation age and daily coverage; previously cached
+forecasts gain coverage after the next successful recalculation. Request timing
+logs are under `/app/live_data/batches/<batch>/logs/collection_events.jsonl`;
+distinct GIRO start and completion times are recorded only by the new version.

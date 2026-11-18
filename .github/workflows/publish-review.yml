@@ -22,13 +22,13 @@ jobs:
         run: |
           set -euo pipefail
           git clone https://github.com/ionoscope/ionoscope-api.git api
-          git -C api checkout cc5686d14f6d18343cfa08bb000019c7a310636e
+          git -C api checkout c1757cc3e7fc224961473b32b853fb574203c0ee
           git clone https://github.com/ionoscope/ionoscope-data.git data
-          git -C data checkout 0783ae63ab88471e713207ba909ab0ff145a80c6
+          git -C data checkout 56d5b367f23f94076036530abee3cf4cf694457d
           git clone https://github.com/ionoscope/ionoscope-ml-service.git ml
           git -C ml checkout 5e32ba74e30ce1e699efb169789ce9230934327e
           git clone https://github.com/ionoscope/ionoscope-frontend.git frontend
-          git -C frontend checkout ac45bc78b007923b325091a56ac3b52e51d1191c
+          git -C frontend checkout ebd1d9c196bea28f9094c1af260360cb5137fb25
       - name: Build images
         run: |
           set -euo pipefail
@@ -66,7 +66,11 @@ jobs:
           cp docs/server-review.md review/README.md
           docker image save $(docker compose -f compose.review.yml config --images | sort -u) | gzip -1 > review/images.tar.gz
           tar -C review -czf ionoscope-review-linux-amd64.tar.gz compose.yml README.md images.tar.gz
-          gh release create "$VERSION" ionoscope-review-linux-amd64.tar.gz --verify-tag --title "IonoScope server review" --notes-file docs/server-review.md
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" ionoscope-review-linux-amd64.tar.gz --clobber
+          else
+            gh release create "$VERSION" ionoscope-review-linux-amd64.tar.gz --verify-tag --title "IonoScope server review" --notes-file docs/server-review.md
+          fi
       - name: Push images to GitHub Container Registry
         run: |
           set -euo pipefail
