@@ -109,9 +109,11 @@ services:
     restart: unless-stopped
     environment:
       IONOSCOPE_SHADOW_DIR: /app/shadow_data
+      IONOSCOPE_WEEKLY_DIR: /app/weekly_data
     volumes:
       - ml_models:/app/production_models:ro
       - ml_shadow:/app/shadow_data:ro
+      - ml_weekly:/app/weekly_data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
       interval: 30s
@@ -177,6 +179,22 @@ services:
     networks:
       - backend
 
+  weekly-model-worker:
+    image: ${IONOSCOPE_ML_IMAGE:-ionoscope-ml-service:latest}
+    restart: unless-stopped
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+    command: ["python", "-u", "scripts/run_weekly_worker.py"]
+    volumes:
+      - data_live:/app/live_data:ro
+      - ml_weekly:/app/weekly_data
+    depends_on:
+      ml-service:
+        condition: service_healthy
+    networks:
+      - backend
+
   forecast-refresh-worker:
     image: ${IONOSCOPE_API_IMAGE:-ionoscope-api:latest}
     restart: unless-stopped
@@ -207,6 +225,7 @@ networks:
     internal: true
 
 volumes:
+  ml_weekly:
   data_live:
   data_raw:
   data_cleaned:
