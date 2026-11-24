@@ -26,7 +26,7 @@ built bundle, load `images.tar.gz`, and run Compose from the same installation
 directory with the same project name so that existing volumes remain attached.
 Do not use `docker compose down -v`: that deletes the stored data.
 
-The data and API images now run as UID 10001. When upgrading an installation
+The data, API and ML images now run as UID 10001. When upgrading an installation
 whose existing data was written by root, stop its services and migrate ownership
 once before starting the updated images:
 
@@ -34,6 +34,7 @@ once before starting the updated images:
 docker compose stop
 docker compose run --rm --no-deps --user 0 --entrypoint sh data-api -c 'chown -R 10001:10001 /app/live_data /app/data /app/cleaned /app/normalized /app/features /app/update_tasks'
 docker compose run --rm --no-deps --user 0 --entrypoint sh api -c 'chown -R 10001:10001 /app/forecast_cache'
+docker compose run --rm --no-deps --user 0 --entrypoint sh model-shadow-worker -c 'chown -R 10001:10001 /app/shadow_data'
 docker compose up -d --pull never
 ```
 
