@@ -44,3 +44,36 @@ responses include observation age and daily coverage; previously cached
 forecasts gain coverage after the next successful recalculation. Request timing
 logs are under `/app/live_data/batches/<batch>/logs/collection_events.jsonl`;
 distinct GIRO start and completion times are recorded only by the new version.
+
+## Automatic updates
+
+Merging a change to the pinned revisions, `compose.review.yml` or `nginx/` into
+`main` publishes new `review-v1` images to GHCR. The images are private, so the
+server needs a classic GitHub token with only the `read:packages` scope, from an
+account that can read the `ionoscope` packages. Store it once for the user who
+runs Compose:
+
+```sh
+docker login ghcr.io -u <github-user> --password-stdin < token.txt
+chmod 600 ~/.docker/config.json
+```
+
+Watchtower reads that login from `~/.docker`. Set `IONOSCOPE_REGISTRY_AUTH_DIR`
+in `.env` when the login is stored elsewhere. Renew the token before it expires,
+or updates stop with an authentication error in the Watchtower log.
+
+The optional `watchtower` service installs those images. It checks GHCR every
+five minutes, recreates only containers labelled with the `ionoscope` scope,
+and removes the images they replaced. Other containers on the host are left
+alone. Enable it once from the installation directory after the installation
+already runs the current images and their volume ownership is migrated:
+
+```sh
+echo COMPOSE_PROFILES=autoupdate >> .env
+docker compose up -d --pull never
+```
+
+Watchtower replaces images, not the Compose file. When a change adds or
+removes services, volumes or settings, copy the new `compose.yml` into the
+installation directory and run `docker compose up -d` once. Check progress with
+`docker compose logs --tail=50 watchtower`.

@@ -2,7 +2,15 @@ name: Publish server review bundle
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-review.yml
+      - compose.review.yml
+      - nginx/**
     tags: [review-v1]
+concurrency:
+  group: publish-review
+  cancel-in-progress: false
 permissions:
   contents: write
   packages: write
