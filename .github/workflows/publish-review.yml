@@ -22,13 +22,13 @@ jobs:
         run: |
           set -euo pipefail
           git clone https://github.com/ionoscope/ionoscope-api.git api
-          git -C api checkout c1757cc3e7fc224961473b32b853fb574203c0ee
+          git -C api checkout 5ddff17af67c73bc39b0823e1d019e4b48348458
           git clone https://github.com/ionoscope/ionoscope-data.git data
           git -C data checkout 56d5b367f23f94076036530abee3cf4cf694457d
           git clone https://github.com/ionoscope/ionoscope-ml-service.git ml
-          git -C ml checkout 5e32ba74e30ce1e699efb169789ce9230934327e
+          git -C ml checkout fe1f7623be1ed9bb83c68fe4c05daf0e13d55388
           git clone https://github.com/ionoscope/ionoscope-frontend.git frontend
-          git -C frontend checkout ebd1d9c196bea28f9094c1af260360cb5137fb25
+          git -C frontend checkout ffb1a35a116ad36cc18f879ee2c92203a37acbcd
       - name: Build images
         run: |
           set -euo pipefail
