@@ -1,6 +1,10 @@
+x-autoupdate: &autoupdate
+  com.centurylinklabs.watchtower.scope: ionoscope
+
 services:
   gateway:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/gateway:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     ports:
       - "${IONOSCOPE_HTTP_PORT:-80}:80"
@@ -15,12 +19,14 @@ services:
 
   frontend:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/frontend:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     networks:
       - public
 
   data-api:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       IONOSCOPE_DATA_WORKSPACE: /app/live_data
@@ -42,6 +48,7 @@ services:
 
   data-update-worker:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
@@ -83,6 +90,7 @@ services:
 
   station-discovery:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/data:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       IONOSCOPE_GIRO_RATE_DIR: /app/live_data/rate_limit
@@ -101,6 +109,7 @@ services:
 
   ml-service:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/ml:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       IONOSCOPE_SHADOW_DIR: /app/shadow_data
@@ -119,6 +128,7 @@ services:
 
   api:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/api:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       IONOSCOPE_CORS_ORIGINS: ${IONOSCOPE_CORS_ORIGINS:-http://localhost:4200}
@@ -155,6 +165,7 @@ services:
 
   model-shadow-worker:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/ml:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       OMP_NUM_THREADS: "2"
@@ -173,6 +184,7 @@ services:
 
   weekly-model-worker:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/ml:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     environment:
       OMP_NUM_THREADS: "2"
@@ -189,6 +201,7 @@ services:
 
   forecast-refresh-worker:
     image: ghcr.io/ionoscope/ionoscope-infrastructure/api:review-v1
+    labels: *autoupdate
     restart: unless-stopped
     command:
       [
@@ -209,6 +222,17 @@ services:
         condition: service_healthy
     networks:
       - backend
+
+  watchtower:
+    image: nickfedor/watchtower:1.24.1
+    restart: unless-stopped
+    profiles: [autoupdate]
+    labels: *autoupdate
+    command: ["--scope", "ionoscope", "--interval", "300", "--cleanup"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - egress
 
 networks:
   public:
