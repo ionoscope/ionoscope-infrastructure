@@ -48,8 +48,19 @@ distinct GIRO start and completion times are recorded only by the new version.
 ## Automatic updates
 
 Merging a change to the pinned revisions, `compose.review.yml` or `nginx/` into
-`main` publishes new `review-v1` images to GHCR. The images are public, so the
-server needs no registry credentials.
+`main` publishes new `review-v1` images to GHCR. The images are private, so the
+server needs a classic GitHub token with only the `read:packages` scope, from an
+account that can read the `ionoscope` packages. Store it once for the user who
+runs Compose:
+
+```sh
+docker login ghcr.io -u <github-user> --password-stdin < token.txt
+chmod 600 ~/.docker/config.json
+```
+
+Watchtower reads that login from `~/.docker`. Set `IONOSCOPE_REGISTRY_AUTH_DIR`
+in `.env` when the login is stored elsewhere. Renew the token before it expires,
+or updates stop with an authentication error in the Watchtower log.
 
 The optional `watchtower` service installs those images. It checks GHCR every
 five minutes, recreates only containers labelled with the `ionoscope` scope,

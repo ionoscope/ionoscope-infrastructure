@@ -229,8 +229,11 @@ services:
     profiles: [autoupdate]
     labels: *autoupdate
     command: ["--scope", "ionoscope", "--interval", "300", "--cleanup"]
+    environment:
+      DOCKER_CONFIG: /registry
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${IONOSCOPE_REGISTRY_AUTH_DIR:-${HOME}/.docker}:/registry:ro
     networks:
       - egress
 
